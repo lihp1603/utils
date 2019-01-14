@@ -110,3 +110,35 @@ func RedisGet(key string) (value string, err error) {
 	}
 	return
 }
+
+func RedisLPush(key, value string) (err error) {
+	if redisPool == nil {
+		err = errors.New("the redis pool is nil")
+		return
+	}
+	// 从redis连接池里面获取一个有效的conn
+	conn := redisPool.Get()
+	defer conn.Close()
+	//执行LPUSH操作
+	_, err = conn.Do("LPUSH", key, value)
+	if err != nil {
+		LogTraceE("LPUSH:%s %s,err:%s", key, value, err.Error())
+	}
+	return
+}
+
+func RedisLLen(key string) (value int, err error) {
+	if redisPool == nil {
+		err = errors.New("the redis pool is nil")
+		return
+	}
+	// 从redis连接池里面获取一个有效的conn
+	conn := redisPool.Get()
+	defer conn.Close()
+	//执行LPUSH操作
+	value, err = redis.Int(conn.Do("LLEN", key))
+	if err != nil {
+		LogTraceE("LLEN:%s,err:%s", key, err.Error())
+	}
+	return
+}
