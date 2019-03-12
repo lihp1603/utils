@@ -142,3 +142,19 @@ func RedisLLen(key string) (value int, err error) {
 	}
 	return
 }
+
+func RedisDo(cmd, key, value string) (err error) {
+	if redisPool == nil {
+		err = errors.New("the redis pool is nil")
+		return
+	}
+	// 从redis连接池里面获取一个有效的conn
+	conn := redisPool.Get()
+	defer conn.Close()
+	//执行LPUSH操作
+	_, err = conn.Do(cmd, key, value)
+	if err != nil {
+		LogTraceE("%s:%s %s,err:%s", cmd, key, value, err.Error())
+	}
+	return
+}
