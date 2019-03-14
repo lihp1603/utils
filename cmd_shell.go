@@ -80,6 +80,66 @@ func EasyCmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs string)
 	return err, isTimeout
 }
 
+//运行外部程序,通过给chCmd发送消息来实现结束这个外部进程
+func CmdRunProcess(chKill chan string, strCmd string, strArgs ...string) error {
+	//添加调试手段函数
+	defer PanicHandler()
+
+	if len(strCmd) == 0 { //避免空串
+		LogTraceE("the cmd exe is empty")
+		return errors.New("the cmd exe empty")
+	}
+	//创建一个channel
+	done := make(chan error)
+	//构造
+	cmd := exec.Command(strCmd, strArgs...)
+	// var stdout, stderr bytes.Buffer
+	// cmd.Stdout = &stdout
+	// cmd.Stderr = &stderr
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	// if runtime.GOOS == "windows" {
+	// 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	// }
+
+	//启动执行
+	err := cmd.Start()
+	if err != nil {
+		LogTraceE("start run:%s failed,error:%s\n", cmd.Path, err.Error())
+		//将应用程序的标准输出和错误输出中的信息打印出来
+		// LogTraceE("stdout:%s", string(stdout.Bytes()))
+		// LogTraceE("stderr:%s", string(stderr.Bytes()))
+		return err
+	}
+	//起一个线程来等待进程执行完成后的返回值
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	LogTraceI("the start process :%s; pid:%d", cmd.Path, cmd.Process.Pid)
+	select {
+	case strChCmd := <-chKill:
+		LogTraceI("receive %s form chKill", strChCmd)
+		if err = cmd.Process.Kill(); err != nil {
+			LogTraceE("failed to kill:%s,error:%s\n", cmd.Path, err.Error())
+		}
+		select {
+		case exitErr := <-done: //等kill 以后，进程成功退出
+			if cmd.ProcessState.Exited() {
+				LogTraceI("the process exited ok\n")
+			}
+			LogTraceI("the process exited err:%s\n", exitErr.Error())
+		}
+		LogTraceI("process:%s killed\n", cmd.Path)
+		return nil
+	case err = <-done:
+		LogTraceE("process:%s err:%s\n", err.Error())
+		return err
+	}
+	return nil
+}
+
 //测试
 func TestCmdRun() {
 	defer PanicHandler()
