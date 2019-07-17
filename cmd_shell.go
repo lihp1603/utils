@@ -1,13 +1,14 @@
 package utils
 
 import (
-	// "bytes"
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
 	// "runtime"
 	"strings"
 	// "syscall"
+	"io/ioutil"
 	"time"
 )
 
@@ -20,16 +21,38 @@ func CmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs ...string) 
 		LogTraceE("the cmd exe is empty")
 		return errors.New("the cmd exe empty"), false
 	}
+	var outputBuf bytes.Buffer
+	var cmdArgs []string
+	var redirectFile string //重定向文件名
+	var hasRedirect bool = false
+	//添加一个用于重定向输出的文件命令结构解析
+	for _, strArg := range strArgs {
+		if strArg == ">" || strArg == ">>" { //重定向符
+			hasRedirect = true
+			LogTraceI("has redirect %s", strArg)
+			continue
+		} else {
+			if hasRedirect {
+				redirectFile = strArg
+				LogTraceI("the redirect file %s", strArg)
+			} else {
+				cmdArgs = append(cmdArgs, strArg)
+			}
+		}
+	}
 	//创建一个channel
 	done := make(chan error)
 	//构造
-	cmd := exec.Command(strCmd, strArgs...)
-	// var stdout, stderr bytes.Buffer
-	// cmd.Stdout = &stdout
-	// cmd.Stderr = &stderr
+	cmd := exec.Command(strCmd, cmdArgs...)
+	//有重定向文件
+	if hasRedirect {
+		cmd.Stdout = &outputBuf
+		cmd.Stderr = os.Stderr
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	// if runtime.GOOS == "windows" {
 	// 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	// }
@@ -61,9 +84,19 @@ func CmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs ...string) 
 		LogTraceI("process:%s killed,because timeout", cmd.Path)
 		return errors.New("process run timeout"), true
 	case err = <-done:
-		return err, false
-	}
+		if err != nil {
+			return err, false
+		}
 
+	}
+	//如果有重定向文件，需要把输出输出到重定向文件中去
+	if hasRedirect {
+		if err = ioutil.WriteFile(redirectFile, outputBuf.Bytes(), 0777); err != nil {
+			LogTraceE("write redirect file :%s failed", redirectFile)
+			return err, false
+		}
+		LogTraceI("write redirect file :%s success", redirectFile)
+	}
 	return nil, false
 }
 
