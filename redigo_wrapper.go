@@ -127,6 +127,22 @@ func RedisLPush(key, value string) (err error) {
 	return
 }
 
+func RedisRPush(key, value string) (err error) {
+	if redisPool == nil {
+		err = errors.New("the redis pool is nil")
+		return
+	}
+	// 从redis连接池里面获取一个有效的conn
+	conn := redisPool.Get()
+	defer conn.Close()
+	//执行LPUSH操作
+	_, err = conn.Do("RPUSH", key, value)
+	if err != nil {
+		LogTraceE("RPUSH:%s %s,err:%s", key, value, err.Error())
+	}
+	return
+}
+
 func RedisLLen(key string) (value int, err error) {
 	if redisPool == nil {
 		err = errors.New("the redis pool is nil")
