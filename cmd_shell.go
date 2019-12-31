@@ -8,12 +8,13 @@ import (
 	// "runtime"
 	"strings"
 	// "syscall"
+	"context"
 	"io/ioutil"
 	"time"
 )
 
 //指定超时时间，调用外部可执行程序运行
-func CmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs ...string) (error, bool) {
+func CmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string, strArgs ...string) (error, bool) {
 	//添加调试手段函数
 	defer PanicHandler()
 
@@ -72,7 +73,18 @@ func CmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs ...string) 
 
 	// 创建一个超时计时器
 	chTimeout := time.After(timeout)
+
 	select {
+	case <-ctx.Done():
+		if err = cmd.Process.Kill(); err != nil {
+			LogTraceE("failed to kill:%s,error:%s", cmd.Path, err.Error())
+		}
+		go func() {
+			//防止因为kill以后,wait goroutine里面的done因为没有接受，导致无法写数据到done中
+			<-done //allow wait goroutine to exit
+		}()
+		LogTraceI("process:%s killed,because upper exit", cmd.Path)
+		return errors.New("process run but upper exit"), true
 	case <-chTimeout:
 		if err = cmd.Process.Kill(); err != nil {
 			LogTraceE("failed to kill:%s,error:%s", cmd.Path, err.Error())
@@ -101,12 +113,12 @@ func CmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs ...string) 
 }
 
 //指定超时时间，调用外部可执行程序运行
-func EasyCmdRunWithTimeout(timeout time.Duration, strCmd string, strArgs string) (error, bool) {
+func EasyCmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string, strArgs string) (error, bool) {
 	// 对参数进行切片
 	Args := strings.Split(strArgs, " ")
 	LogTraceI("%+v", Args)
 	// 执行合成操作
-	err, isTimeout := CmdRunWithTimeout(timeout, strCmd, Args...)
+	err, isTimeout := CmdRunWithTimeout(ctx, timeout, strCmd, Args...)
 	if err != nil {
 		return err, isTimeout
 	}
@@ -188,7 +200,7 @@ func TestCmdRun() {
 		"-filter_complex", "[0:v][1:v]overlay=shortest=1", "-vcodec", "libx264", "-an", "-y", "F:\\test_file\\ff_gif_4_b.mp4"}
 
 	timeout := 5 * time.Minute
-	err, isTimeout := CmdRunWithTimeout(timeout, strCmd, strArgs...)
+	err, isTimeout := CmdRunWithTimeout(context.Background(), timeout, strCmd, strArgs...)
 	// err, isTimeout := CmdRunWithTimeout(timeout, strCmd, strArgs)
 	if err != nil {
 		LogTraceI("%s,%d", err.Error(), isTimeout)
