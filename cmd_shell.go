@@ -116,9 +116,34 @@ func CmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string
 func EasyCmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string, strArgs string) (error, bool) {
 	// 对参数进行切片
 	Args := strings.Split(strArgs, " ")
-	LogTraceI("%+v", Args)
+	LogTraceI("len(args)=%d;%+v", len(Args), Args)
+	var correctArgs []string
+	startIndex := -1
+	joinFlag := false
+	for index, argv := range Args {
+		//引号
+		if strings.Contains(argv, "'") {
+			if strings.Index(argv, "'") == strings.LastIndex(argv, "'") { //仅仅含单个的时候
+				if joinFlag {
+					joinArg := strings.Join(Args[startIndex:index+1], " ")
+					LogTraceI("joinArgs:%s", joinArg)
+					joinArg = strings.Replace(joinArg, "'", "", -1)
+					LogTraceI("replace joinArgs:%s", joinArg)
+					correctArgs = append(correctArgs, joinArg)
+				}
+				startIndex = index
+				joinFlag = !joinFlag
+			} else if argv != " " && !joinFlag {
+				argv = strings.Replace(argv, "'", "", -1)
+				correctArgs = append(correctArgs, argv)
+			}
+		} else if argv != " " && !joinFlag {
+			correctArgs = append(correctArgs, argv)
+		}
+	}
+	LogTraceI("len(correctArgs)=%d;%+v", len(correctArgs), correctArgs)
 	// 执行合成操作
-	err, isTimeout := CmdRunWithTimeout(ctx, timeout, strCmd, Args...)
+	err, isTimeout := CmdRunWithTimeout(ctx, timeout, strCmd, correctArgs...)
 	if err != nil {
 		return err, isTimeout
 	}

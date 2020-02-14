@@ -159,7 +159,7 @@ func RedisLLen(key string) (value int, err error) {
 	return
 }
 
-func RedisDo(cmd, key, value string) (err error) {
+func RedisDo(cmd string, args ...interface{}) (err error) {
 	if redisPool == nil {
 		err = errors.New("the redis pool is nil")
 		return
@@ -168,9 +168,9 @@ func RedisDo(cmd, key, value string) (err error) {
 	conn := redisPool.Get()
 	defer conn.Close()
 	//执行LPUSH操作
-	_, err = conn.Do(cmd, key, value)
+	_, err = conn.Do(cmd, args...)
 	if err != nil {
-		LogTraceE("%s:%s %s,err:%s", cmd, key, value, err.Error())
+		LogTraceE("%s,err:%s", cmd, err.Error())
 	}
 	return
 }
