@@ -122,19 +122,19 @@ func EasyCmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd st
 	joinFlag := false
 	for index, argv := range Args {
 		//引号
-		if strings.Contains(argv, "'") {
-			if strings.Index(argv, "'") == strings.LastIndex(argv, "'") { //仅仅含单个的时候
+		if strings.Contains(argv, "\"") {
+			if strings.Index(argv, "\"") == strings.LastIndex(argv, "\"") { //仅仅含单个的时候
 				if joinFlag {
 					joinArg := strings.Join(Args[startIndex:index+1], " ")
 					LogTraceI("joinArgs:%s", joinArg)
-					joinArg = strings.Replace(joinArg, "'", "", -1)
+					joinArg = strings.Replace(joinArg, "\"", "", -1)
 					LogTraceI("replace joinArgs:%s", joinArg)
 					correctArgs = append(correctArgs, joinArg)
 				}
 				startIndex = index
 				joinFlag = !joinFlag
 			} else if argv != " " && !joinFlag {
-				argv = strings.Replace(argv, "'", "", -1)
+				argv = strings.Replace(argv, "\"", "", -1)
 				correctArgs = append(correctArgs, argv)
 			}
 		} else if argv != " " && !joinFlag {
