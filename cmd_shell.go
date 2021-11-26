@@ -14,7 +14,7 @@ import (
 )
 
 //指定超时时间，调用外部可执行程序运行
-func CmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string, strArgs ...string) (error, bool) {
+func CmdRun(ctx context.Context, strCmd string, strArgs ...string) (error, bool) {
 	//添加调试手段函数
 	defer PanicHandler()
 
@@ -71,9 +71,6 @@ func CmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string
 		done <- cmd.Wait()
 	}()
 
-	// 创建一个超时计时器
-	chTimeout := time.After(timeout)
-
 	select {
 	case <-ctx.Done():
 		if err = cmd.Process.Kill(); err != nil {
@@ -85,21 +82,10 @@ func CmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string
 		}()
 		LogTraceI("process:%s killed,because upper exit", cmd.Path)
 		return errors.New("process run but upper exit"), true
-	case <-chTimeout:
-		if err = cmd.Process.Kill(); err != nil {
-			LogTraceE("failed to kill:%s,error:%s", cmd.Path, err.Error())
-		}
-		go func() {
-			//防止因为kill以后,wait goroutine里面的done因为没有接受，导致无法写数据到done中
-			<-done //allow wait goroutine to exit
-		}()
-		LogTraceI("process:%s killed,because timeout", cmd.Path)
-		return errors.New("process run timeout"), true
 	case err = <-done:
 		if err != nil {
 			return err, false
 		}
-
 	}
 	//如果有重定向文件，需要把输出输出到重定向文件中去
 	if hasRedirect {
@@ -113,7 +99,7 @@ func CmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string
 }
 
 //指定超时时间，调用外部可执行程序运行
-func EasyCmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd string, strArgs string) (error, bool) {
+func EasyCmdRun(ctx context.Context, strCmd string, strArgs string) (error, bool) {
 	// 对参数进行切片
 	Args := strings.Split(strArgs, " ")
 	LogTraceI("len(args)=%d;%+v", len(Args), Args)
@@ -143,71 +129,11 @@ func EasyCmdRunWithTimeout(ctx context.Context, timeout time.Duration, strCmd st
 	}
 	LogTraceI("len(correctArgs)=%d;%+v", len(correctArgs), correctArgs)
 	// 执行合成操作
-	err, isTimeout := CmdRunWithTimeout(ctx, timeout, strCmd, correctArgs...)
+	err, isTimeout := CmdRun(ctx, strCmd, correctArgs...)
 	if err != nil {
 		return err, isTimeout
 	}
 	return err, isTimeout
-}
-
-//运行外部程序,通过给chCmd发送消息来实现结束这个外部进程
-func CmdRunProcess(chKill chan string, strCmd string, strArgs ...string) error {
-	//添加调试手段函数
-	defer PanicHandler()
-
-	if len(strCmd) == 0 { //避免空串
-		LogTraceE("the cmd exe is empty")
-		return errors.New("the cmd exe empty")
-	}
-	//创建一个channel
-	done := make(chan error)
-	//构造
-	cmd := exec.Command(strCmd, strArgs...)
-	// var stdout, stderr bytes.Buffer
-	// cmd.Stdout = &stdout
-	// cmd.Stderr = &stderr
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	// if runtime.GOOS == "windows" {
-	// 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	// }
-
-	//启动执行
-	err := cmd.Start()
-	if err != nil {
-		LogTraceE("start run:%s failed,error:%s\n", cmd.Path, err.Error())
-		//将应用程序的标准输出和错误输出中的信息打印出来
-		// LogTraceE("stdout:%s", string(stdout.Bytes()))
-		// LogTraceE("stderr:%s", string(stderr.Bytes()))
-		return err
-	}
-	//起一个线程来等待进程执行完成后的返回值
-	go func() {
-		done <- cmd.Wait()
-	}()
-
-	LogTraceI("the start process :%s; pid:%d", cmd.Path, cmd.Process.Pid)
-	select {
-	case strChCmd := <-chKill:
-		LogTraceI("receive %s form chKill", strChCmd)
-		if err = cmd.Process.Kill(); err != nil {
-			LogTraceE("failed to kill:%s,error:%s\n", cmd.Path, err.Error())
-		}
-		select {
-		case exitErr := <-done: //等kill 以后，进程成功退出
-			if cmd.ProcessState.Exited() {
-				LogTraceI("the process exited ok\n")
-			}
-			LogTraceI("the process exited err:%s\n", exitErr.Error())
-		}
-		LogTraceI("process:%s killed\n", cmd.Path)
-		return nil
-	case err = <-done:
-		LogTraceE("process:%s err:%s\n", err.Error())
-		return err
-	}
-	return nil
 }
 
 //测试
@@ -225,7 +151,12 @@ func TestCmdRun() {
 		"-filter_complex", "[0:v][1:v]overlay=shortest=1", "-vcodec", "libx264", "-an", "-y", "F:\\test_file\\ff_gif_4_b.mp4"}
 
 	timeout := 5 * time.Minute
-	err, isTimeout := CmdRunWithTimeout(context.Background(), timeout, strCmd, strArgs...)
+	//用这种方式实现外部超时
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	//
+	defer cancel()
+
+	err, isTimeout := CmdRun(ctx, strCmd, strArgs...)
 	// err, isTimeout := CmdRunWithTimeout(timeout, strCmd, strArgs)
 	if err != nil {
 		LogTraceI("%s,%d", err.Error(), isTimeout)
